@@ -1,46 +1,104 @@
-//! Thread safe communication channel
+//! Thread safe communication channels
+use crate::queue::{NotificationError, Notifier};
+use crate::NotificationId;
+use crossbeam::channel as beamchannel;
 use std::error;
 use std::sync::{mpsc, Arc};
 use std::{fmt, io};
-use crate::NotificationId;
-use crate::queue::{NotificationQueue, SyncNotificationQueue, SyncNotificationError};
 
-/// Creates a new asynchronous channel, where the `Sender::send` function, in addition to sending a message,
-/// queues `NotificationId` and thereby trigger notification on `Poll`
-pub fn channel<T>(queue: Arc<NotificationQueue>, id: NotificationId) -> (Sender<T>, mpsc::Receiver<T>) {
+/// Creates a new asynchronous/unbounded channel, where the `Sender::send` function, in addition to sending a message,
+/// triggers a notification on `Poll`
+pub fn channel<T>(
+    notifier: Arc<dyn Notifier>,
+    id: NotificationId,
+) -> (Sender<T>, mpsc::Receiver<T>) {
     let (tx, rx) = mpsc::channel();
-    let tx = Sender { queue: Arc::clone(&queue), tx, id};
+    let tx = Sender { notifier, tx, id };
     (tx, rx)
 }
 
 /// Creates a new synchronous channel, where the `SyncSender::send` function, in addition to sending a message,
-/// queues `NotificationId` and thereby trigger notification on `Poll`
-pub fn sync_channel<T>(queue: Arc<SyncNotificationQueue>, id: NotificationId, bound_size: usize) -> (SyncSender<T>, mpsc::Receiver<T>) {
+/// triggers a notification on `Poll`
+pub fn sync_channel<T>(
+    notifier: Arc<dyn Notifier>,
+    id: NotificationId,
+    bound_size: usize,
+) -> (SyncSender<T>, mpsc::Receiver<T>) {
     let (tx, rx) = mpsc::sync_channel(bound_size);
-    let tx = SyncSender { queue: Arc::clone(&queue), tx, id};
+    let tx = SyncSender { notifier, tx, id };
+    (tx, rx)
+}
+
+/// Creates a new asynchronous/unbounded crossbeam channel, where the `Sender::send` function, in addition to sending a message,
+/// triggers a notification on `Poll`
+pub fn crossbeam_channel_unbounded<T>(
+    notifier: Arc<dyn Notifier>,
+    id: NotificationId,
+) -> (CrossbeamSender<T>, beamchannel::Receiver<T>) {
+    let (tx, rx) = beamchannel::unbounded();
+    let tx = CrossbeamSender { notifier, tx, id };
+    (tx, rx)
+}
+
+/// Creates a new synchronous/bounded crossbeam channel, where the `Sender::send` function, in addition to sending a message,
+/// triggers a notification on `Poll`
+pub fn crossbeam_channel_bounded<T>(
+    notifier: Arc<dyn Notifier>,
+    id: NotificationId,
+    size: usize,
+) -> (CrossbeamSender<T>, beamchannel::Receiver<T>) {
+    let (tx, rx) = beamchannel::bounded(size);
+    let tx = CrossbeamSender { notifier, tx, id };
     (tx, rx)
 }
 
 /// The sending half of a channel.
 pub struct Sender<T> {
     tx: mpsc::Sender<T>,
-    queue: Arc<NotificationQueue>,
-    id: NotificationId
+    notifier: Arc<dyn Notifier>,
+    id: NotificationId,
 }
 
 impl<T> Sender<T> {
     /// Attempts to send a value on this channel, returning it back if it could not be sent.
     pub fn send(&self, t: T) -> Result<(), SendError<T>> {
         self.tx.send(t).map_err(SendError::from)?;
-        self.queue.push(self.id).map_err(SendError::from)
+        self.notifier.notify(self.id).map_err(SendError::from)
+    }
+}
+
+/// The sending half of a channel crossbeam channel
+pub struct CrossbeamSender<T> {
+    tx: beamchannel::Sender<T>,
+    notifier: Arc<dyn Notifier>,
+    id: NotificationId,
+}
+
+impl<T> CrossbeamSender<T> {
+    /// Attempts to send a value on this channel, returning it back if it could not be sent.
+    /// For bounded channels, it will block.
+    pub fn send(&self, t: T) -> Result<(), SendError<T>> {
+        self.tx.send(t).map_err(SendError::from)?;
+        self.notifier.notify(self.id).map_err(SendError::from)
+    }
+
+    /// Attempts to send a value on this channel without blocking.
+    ///
+    /// This method differs from `send` by returning immediately if the channel's
+    /// buffer is full or no receiver is waiting to acquire some data.
+    pub fn try_send(&self, t: T) -> Result<(), TrySendError<T>> {
+        self.tx
+            .try_send(t)
+            .map_err(From::from)
+            .and_then(|_| self.notifier.notify(self.id).map_err(From::from))
     }
 }
 
 /// The sending half of a synchronous channel.
 pub struct SyncSender<T> {
     tx: mpsc::SyncSender<T>,
-    queue: Arc<SyncNotificationQueue>,
-    id: NotificationId
+    notifier: Arc<dyn Notifier>,
+    id: NotificationId,
 }
 
 impl<T> SyncSender<T> {
@@ -48,20 +106,22 @@ impl<T> SyncSender<T> {
     ///
     /// This function will *block* until space in the internal buffer becomes
     /// available or a receiver is available to hand off the message to.
-    ///
-    pub fn send(&self, t: T) -> Result<(), SyncSendError> {
-        self.tx.send(t).map_err(From::from)
-            .and(self.queue.push(self.id).map_err(From::from))
+    pub fn send(&self, t: T) -> Result<(), SendError<T>> {
+        self.tx
+            .send(t)
+            .map_err(From::from)
+            .and_then(|_| self.notifier.notify(self.id).map_err(From::from))
     }
 
     /// Attempts to send a value on this channel without blocking.
     ///
     /// This method differs from `send` by returning immediately if the channel's
     /// buffer is full or no receiver is waiting to acquire some data.
-    pub fn try_send(&self, t: T) -> Result<(), SyncTrySendError> {
-        self.tx.try_send(t).map_err(From::from).and(
-            self.queue.push(self.id).map_err(From::from)
-        )
+    pub fn try_send(&self, t: T) -> Result<(), TrySendError<T>> {
+        self.tx
+            .try_send(t)
+            .map_err(From::from)
+            .and_then(|_| self.notifier.notify(self.id).map_err(From::from))
     }
 }
 
@@ -71,34 +131,10 @@ pub enum SendError<T> {
     Io(io::Error),
 
     /// The receiving half of the channel has disconnected.
-    Disconnected(T)
-}
+    Disconnected(T),
 
-/// An error returned from the `SyncSender::send` function.
-pub enum SyncSendError {
-    /// An IO error.
-    Io(io::Error),
-
-    /// The receiving half of the channel has disconnected.
-    Disconnected,
-
-    /// Failed to add notification
-    NotificationFailed
-}
-
-/// An error returned from the `SyncSender::try_send` function
-pub enum SyncTrySendError {
-    /// An IO error.
-    Io(io::Error),
-
-    /// The receiving half of the channel has disconnected.
-    Disconnected,
-
-    /// Failed to add notification
-    NotificationFailed,
-
-    /// Full
-    Full
+    /// Underlying notification queue is full
+    NotificationQueueFull,
 }
 
 /// An error returned from the `SyncSender::try_send` function.
@@ -106,19 +142,22 @@ pub enum TrySendError<T> {
     /// An IO error.
     Io(io::Error),
 
-    /// Data could not be sent because it would require the callee to block.
+    /// Data could not be sent over the channel because it would require the callee to block.
     Full(T),
 
     /// The receiving half of the channel has disconnected.
     Disconnected(T),
+
+    /// Underlying notification queue is full
+    NotificationQueueFull,
 }
 
 impl<T> Clone for Sender<T> {
     fn clone(&self) -> Sender<T> {
         Sender {
             tx: self.tx.clone(),
-            queue: Arc::clone(&self.queue),
-            id: self.id
+            notifier: Arc::clone(&self.notifier),
+            id: self.id,
         }
     }
 }
@@ -127,15 +166,15 @@ impl<T> Clone for SyncSender<T> {
     fn clone(&self) -> SyncSender<T> {
         SyncSender {
             tx: self.tx.clone(),
-            queue: Arc::clone(&self.queue),
-            id: self.id
+            notifier: Arc::clone(&self.notifier),
+            id: self.id,
         }
     }
 }
 
 /*
  *
- * ===== Error conversions =====
+ * ===== Implement Error conversions =====
  *
  */
 
@@ -151,21 +190,15 @@ impl<T> From<io::Error> for SendError<T> {
     }
 }
 
-impl<T> From<mpsc::SendError<T>> for SyncSendError {
-    fn from(_: mpsc::SendError<T>) -> Self {
-        SyncSendError::Disconnected
+impl<T> From<beamchannel::SendError<T>> for SendError<T> {
+    fn from(src: beamchannel::SendError<T>) -> Self {
+        SendError::Disconnected(src.0)
     }
 }
 
-impl From<io::Error> for SyncSendError {
-    fn from(src: io::Error) -> Self {
-        SyncSendError::Io(src)
-    }
-}
-
-impl From<SyncNotificationError<NotificationId>> for SyncSendError {
-    fn from(_: SyncNotificationError<NotificationId>) -> Self {
-        SyncSendError::NotificationFailed
+impl<T> From<NotificationError<NotificationId>> for SendError<T> {
+    fn from(_: NotificationError<NotificationId>) -> Self {
+        SendError::NotificationQueueFull
     }
 }
 
@@ -178,27 +211,18 @@ impl<T> From<mpsc::TrySendError<T>> for TrySendError<T> {
     }
 }
 
-impl<T> From<SyncNotificationError<T>> for SyncTrySendError {
-    fn from(src: SyncNotificationError<T>) -> Self {
-        match src {
-            SyncNotificationError::Full(_) => SyncTrySendError::NotificationFailed,
-            SyncNotificationError::Io(src) => SyncTrySendError::Io(src),
-        }
+impl<T> From<NotificationError<NotificationId>> for TrySendError<T> {
+    fn from(_: NotificationError<NotificationId>) -> Self {
+        TrySendError::NotificationQueueFull
     }
 }
 
-impl <T> From<mpsc::TrySendError<T>> for SyncTrySendError {
-    fn from(src: mpsc::TrySendError<T>) -> Self {
+impl<T> From<beamchannel::TrySendError<T>> for TrySendError<T> {
+    fn from(src: beamchannel::TrySendError<T>) -> Self {
         match src {
-            mpsc::TrySendError::Full(_) => SyncTrySendError::Full,
-            mpsc::TrySendError::Disconnected(_) => SyncTrySendError::Disconnected,
+            beamchannel::TrySendError::Full(v) => TrySendError::Full(v),
+            beamchannel::TrySendError::Disconnected(v) => TrySendError::Disconnected(v),
         }
-    }
-}
-
-impl From<io::Error> for SyncTrySendError {
-    fn from(src: io::Error) -> Self {
-        SyncTrySendError::Io(src)
     }
 }
 
@@ -216,18 +240,13 @@ impl<T> From<io::Error> for TrySendError<T> {
 
 /*
  *
- * ===== Implement Error, Debug and Display for Errors =====
+ * ===== Implement Error, Debug, and Display for Errors =====
  *
  */
 
 impl<T> error::Error for SendError<T> {}
 
-impl error::Error for SyncSendError {}
-
 impl<T> error::Error for TrySendError<T> {}
-
-impl error::Error for SyncTrySendError {}
-
 
 impl<T> fmt::Debug for SendError<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -238,30 +257,6 @@ impl<T> fmt::Debug for SendError<T> {
 impl<T> fmt::Display for SendError<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         format_send_error(self, f)
-    }
-}
-
-impl fmt::Debug for SyncSendError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        format_sync_send_error(self, f)
-    }
-}
-
-impl fmt::Display for SyncSendError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        format_sync_send_error(self, f)
-    }
-}
-
-impl fmt::Debug for SyncTrySendError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        format_sync_try_send_error(self, f)
-    }
-}
-
-impl fmt::Display for SyncTrySendError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        format_sync_try_send_error(self, f)
     }
 }
 
@@ -281,26 +276,8 @@ impl<T> fmt::Display for TrySendError<T> {
 fn format_send_error<T>(e: &SendError<T>, f: &mut fmt::Formatter) -> fmt::Result {
     match e {
         SendError::Io(ref io_err) => write!(f, "{}", io_err),
-        SendError::Disconnected(..) => write!(f, "Disconnected"),
-    }
-}
-
-#[inline]
-fn format_sync_send_error(e: &SyncSendError, f: &mut fmt::Formatter) -> fmt::Result {
-    match e {
-        SyncSendError::Io(ref io_err) => write!(f, "{}", io_err),
-        SyncSendError::Disconnected => write!(f, "Disconnected"),
-        SyncSendError::NotificationFailed => write!(f, "Notification failed"),
-    }
-}
-
-#[inline]
-fn format_sync_try_send_error(e: &SyncTrySendError, f: &mut fmt::Formatter) -> fmt::Result {
-    match e {
-        SyncTrySendError::Io(ref io_err) => write!(f, "{}", io_err),
-        SyncTrySendError::Disconnected => write!(f, "Disconnected"),
-        SyncTrySendError::NotificationFailed => write!(f, "Notification failed"),
-        SyncTrySendError::Full => write!(f, "Channel full"),
+        SendError::Disconnected(_) => write!(f, "Disconnected"),
+        SendError::NotificationQueueFull => write!(f, "Notification queue full"),
     }
 }
 
@@ -310,5 +287,6 @@ fn format_try_send_error<T>(e: &TrySendError<T>, f: &mut fmt::Formatter) -> fmt:
         TrySendError::Io(ref io_err) => write!(f, "{}", io_err),
         TrySendError::Full(..) => write!(f, "Channel full"),
         TrySendError::Disconnected(..) => write!(f, "Disconnected"),
+        TrySendError::NotificationQueueFull => write!(f, "Notification queue full"),
     }
 }
