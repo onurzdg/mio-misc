@@ -1,152 +1,359 @@
 //! Thread safe scheduler
-use std::sync::Arc;
-use std::sync::atomic::{Ordering, AtomicBool};
+use crate::queue::Notifier;
+use crate::NotificationId;
+use crossbeam_queue::SegQueue;
+use std::cmp::Ordering as CmpOrdering;
+use std::collections::{BTreeSet, HashSet};
+use std::fmt::Debug;
+use std::hash::{Hash, Hasher};
+use std::ops::{Add, Sub};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::{Arc, RwLock};
+use std::thread::JoinHandle;
 use std::{
-    thread,
+    fmt, thread,
     time::{Duration, Instant},
 };
-use crate::NotificationId;
-use crate::queue::{NotificationQueue, SyncNotificationQueue};
-use std::ops::Sub;
 
-/// Notification scheduler that periodically adds notification to the queue
+/// Schedules notification deliveries
 pub struct NotificationScheduler {
-    handle: SchedulerHandle
+    notifier: Arc<dyn Notifier>,
+    scheduler: Arc<Scheduler>,
 }
 
 impl NotificationScheduler {
-    /// Adds notification to the queue at fixed intervals with an optional initial delay
-    pub fn notify_with_fixed_interval<I: Into<Option<Duration>>>(id: NotificationId, queue: Arc<NotificationQueue>, interval: Duration, initial_delay: I) -> NotificationScheduler
-        where I: Into<Option<Duration>> {
+    /// Creates a new scheduler that uses the provided notifier to deliver notifications
+    pub fn new(notifier: Arc<dyn Notifier>, scheduler: Arc<Scheduler>) -> NotificationScheduler {
         NotificationScheduler {
-            handle: Scheduler::schedule_with_fixed_interval(interval,
-                                                            initial_delay,
-                                                            move || { let _ = queue.push(id); },
-            )
+            notifier,
+            scheduler,
         }
     }
 
-    /// Adds a one-time notification to the queue after an initial delay
-    pub fn notify_once_after_delay(id: NotificationId, queue: Arc<NotificationQueue>, delay: Duration) -> NotificationScheduler {
-        NotificationScheduler {
-            handle: Scheduler::schedule_one_time(delay,
-                                                 move || { let _ = queue.push(id); },
-            )
-        }
+    /// Schedules recurring notification deliveries with fixed intervals
+    pub fn notify_with_fixed_interval<I: Into<Option<Duration>>>(
+        &self,
+        id: NotificationId,
+        interval: Duration,
+        initial_delay: I,
+        name: Option<String>,
+    ) -> ScheduleEntryId
+    where
+        I: Into<Option<Duration>>,
+    {
+        let notifier = Arc::clone(&self.notifier);
+        let entry = ScheduleEntry::with_interval(interval, initial_delay, name, move || {
+            let _ = notifier.notify(id);
+        });
+        let id = entry.id;
+        self.scheduler.schedule(entry);
+        id
     }
 
-    /// Adds notification to the queue at fixed intervals with an optional initial delay
-    pub fn notify_with_fixed_interval_with_sync_queue<I>(id: NotificationId, queue: Arc<SyncNotificationQueue>, interval: Duration, initial_delay: I) -> NotificationScheduler
-        where I: Into<Option<Duration>> {
-        NotificationScheduler {
-            handle: Scheduler::schedule_with_fixed_interval(interval,
-                                                            initial_delay,
-                                                            move || { let _ = queue.push(id); },
-            )
-        }
+    /// Schedules a one-time notification delivery
+    pub fn notify_once_after_delay(
+        &self,
+        id: NotificationId,
+        delay: Duration,
+        name: Option<String>,
+    ) -> ScheduleEntryId {
+        let notifier = Arc::clone(&self.notifier);
+        let entry = ScheduleEntry::one_time(delay, name, move || {
+            let _ = notifier.notify(id);
+        });
+        let id = entry.id;
+        self.scheduler.schedule(entry);
+        id
     }
 
-    /// Adds a one-time notification to the queue after an initial delay
-    pub fn notify_once_after_delay_with_sync_queue(id: NotificationId, queue: Arc<SyncNotificationQueue>, delay: Duration) -> NotificationScheduler {
-        NotificationScheduler {
-            handle: Scheduler::schedule_one_time(delay,
-                                                 move || { let _ = queue.push(id); },
-            )
-        }
-    }
-
-    /// Cancels scheduled runs of the passed function unless it was already cancelled,
-    /// in which case it returns false.
-    pub fn cancel(self) -> thread::Result<()> {
-        self.handle.cancel()
+    /// Cancels future notification(s)
+    pub fn cancel(&self, id: ScheduleEntryId) {
+        self.scheduler.cancel(id);
     }
 }
 
-/// Handle to the created schedule
-pub struct SchedulerHandle {
-    cancel: Arc<AtomicBool>,
-    thread_handle: thread::JoinHandle<()>,
+type Callback = dyn Fn() + Send + Sync + 'static;
+
+/// Entry associated with callback
+#[derive(Clone)]
+pub struct ScheduleEntry {
+    start: Instant,
+    /// The interval with which to run the callback. No interval means only one-time run
+    interval: Option<Duration>,
+    callback: Arc<Callback>,
+    /// The assigned name of the entry for debugging purposes
+    pub name: Option<String>,
+    /// Entry Id
+    pub id: ScheduleEntryId,
 }
 
-impl SchedulerHandle {
-    /// Cancels scheduled runs of the passed function unless it was already cancelled,
-    /// in which case it returns false.
-    pub fn cancel(self) -> thread::Result<()> {
-        self.cancel.store(true, Ordering::SeqCst);
-        self.thread_handle.thread().unpark();
-        self.thread_handle.join()
+impl ScheduleEntry {
+    /// Creates an entry to run the callback repeatedly with a fixed delay
+    pub fn with_interval<I, F>(
+        interval: Duration,
+        initial_delay: I,
+        name: Option<String>,
+        callback: F,
+    ) -> ScheduleEntry
+    where
+        I: Into<Option<Duration>>,
+        F: Fn() + Send + Sync + 'static,
+    {
+        let now = Instant::now();
+        ScheduleEntry {
+            start: initial_delay.into().map(|d| now.add(d)).unwrap_or(now),
+            interval: Some(interval),
+            callback: Arc::new(callback),
+            name,
+            id: ScheduleEntryId::gen_next(),
+        }
+    }
+
+    /// Creates an entry to run the callback only once after a given delay
+    pub fn one_time<F>(delay: Duration, name: Option<String>, callback: F) -> ScheduleEntry
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        ScheduleEntry {
+            start: Instant::now().add(delay),
+            interval: None,
+            callback: Arc::new(callback),
+            name,
+            id: ScheduleEntryId::gen_next(),
+        }
     }
 }
 
-/// Runs the provided function with fixed intervals
-pub struct Scheduler {}
+impl fmt::Debug for ScheduleEntry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ScheduleEntry")
+            .field("start", &self.start)
+            .field("interval", &self.interval)
+            .field("name", &self.name)
+            .field("id", &self.id)
+            .finish()
+    }
+}
+
+impl Hash for ScheduleEntry {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        self.start.hash(hasher);
+        self.id.hash(hasher);
+    }
+}
+
+impl Eq for ScheduleEntry {}
+
+impl PartialEq for ScheduleEntry {
+    fn eq(&self, other: &Self) -> bool {
+        self.start == other.start && self.id == other.id
+    }
+}
+
+impl Ord for ScheduleEntry {
+    fn cmp(&self, other: &Self) -> CmpOrdering {
+        self.start.cmp(&other.start).then(self.id.cmp(&other.id))
+    }
+}
+
+impl PartialOrd for ScheduleEntry {
+    fn partial_cmp(&self, other: &Self) -> Option<CmpOrdering> {
+        Some(self.cmp(other))
+    }
+}
+
+static NEXT_SCHEDULE_ENTRY_ID: AtomicU32 = AtomicU32::new(1);
+
+/// Id associated with an entry
+#[derive(Copy, Clone, Debug, PartialEq, Ord, PartialOrd, Eq, Hash)]
+pub struct ScheduleEntryId(u32);
+
+impl ScheduleEntryId {
+    /// Generates next `ScheduleEntryId`, which is guaranteed to be unique
+    pub fn gen_next() -> ScheduleEntryId {
+        let id = NEXT_SCHEDULE_ENTRY_ID.fetch_add(1, Ordering::SeqCst);
+        ScheduleEntryId(id)
+    }
+
+    /// Returns id
+    pub fn id(&self) -> u32 {
+        self.0
+    }
+}
+
+/// Scheduler Status
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum SchedulerStatus {
+    /// Currently executing an entry
+    Active,
+    /// Waiting for new entries to be scheduled
+    Parked,
+    /// Waiting to execute entries in the queue at the scheduled intervals
+    ParkedTimeout,
+}
+
+/// Single-threaded scheduler that prioritizes "cancels" over schedule executions, hence multiple queues
+pub struct Scheduler {
+    shutdown: Arc<AtomicBool>,
+    thread_handle: JoinHandle<()>,
+    schedule_queue: Arc<SegQueue<ScheduleEntry>>,
+    cancel_queue: Arc<SegQueue<ScheduleEntryId>>,
+    name: String,
+    status: Arc<RwLock<SchedulerStatus>>,
+    entry_count: Arc<AtomicU32>,
+}
+
+impl Default for Scheduler {
+    fn default() -> Scheduler {
+        Scheduler::new(None)
+    }
+}
+
+// Helps distinguish different scheduler creations
+static SCHEDULER_THREAD_ID: AtomicU32 = AtomicU32::new(1);
 
 impl Scheduler {
-    /// Schedules function runs with fixed delay
-    pub fn schedule_with_fixed_interval<F, I>(interval: Duration, initial_delay: I, f: F) -> SchedulerHandle
-        where F: Fn() + Send + 'static,
-              I: Into<Option<Duration>> {
-        let initial_delay = initial_delay.into();
-        let cancel = Arc::new(AtomicBool::new(false));
-        let thread_cancel = Arc::clone(&cancel);
-        let thread_handle = thread::spawn(move || {
-            if let Some(delay) = initial_delay {
-                let instant = Instant::now();
-                while !thread_cancel.load(Ordering::SeqCst) {
-                    thread::park_timeout(delay);
-                    let elapsed = instant.elapsed();
-                    if elapsed.ge(&delay) {
-                        break;
-                    }
-                }
-            }
-
-            let mut instant = Instant::now();
-            let mut interval = interval;
-            while !thread_cancel.load(Ordering::SeqCst) {
-                thread::park_timeout(interval);
-                if !thread_cancel.load(Ordering::SeqCst) { // still not cancelled?
-                    // protects against spurious wake-ups
-                    let elapsed = instant.elapsed();
-                    if elapsed.ge(&interval) { // interval exceeded?
-                        f();
-                        instant = Instant::now();
-                    } else {
-                        interval = interval.sub(elapsed);
-                    }
-                }
-            }
-        });
-        SchedulerHandle {
-            cancel,
-            thread_handle,
-        }
+    /// Returns the name of the scheduler
+    pub fn name(&self) -> &str {
+        self.name.as_str()
     }
 
-    /// Schedules one-off function run
-    pub fn schedule_one_time<F: Fn() + Send + 'static>(delay: Duration, f: F) -> SchedulerHandle {
-        let cancel = Arc::new(AtomicBool::new(false));
-        let thread_cancel = Arc::clone(&cancel);
-        let thread_handle = thread::spawn(move || {
-            let instant = Instant::now();
-            let mut delay = delay;
-            while !thread_cancel.load(Ordering::SeqCst) {
-                thread::park_timeout(delay);
-                if !thread_cancel.load(Ordering::SeqCst) { // still not cancelled?
-                    // protects against spurious wake-ups
-                    let elapsed = instant.elapsed();
-                    if elapsed.ge(&delay) { // interval exceeded?
-                        f();
-                        break;
+    /// Schedules entry for execution(s)
+    pub fn schedule(&self, entry: ScheduleEntry) {
+        self.schedule_queue.push(entry);
+        self.thread_handle.thread().unpark();
+    }
+
+    /// Cancels future execution(s)
+    pub fn cancel(&self, id: ScheduleEntryId) {
+        self.cancel_queue.push(id);
+        self.thread_handle.thread().unpark();
+    }
+
+    /// Returns the scheduler's current status
+    pub fn status(&self) -> SchedulerStatus {
+        *(self.status.read().unwrap())
+    }
+
+    /// Number of current entries
+    pub fn entry_count(&self) -> u32 {
+        self.entry_count.load(Ordering::SeqCst)
+    }
+
+    /// Creates a scheduler
+    pub fn new(name: Option<String>) -> Scheduler {
+        let t_id = SCHEDULER_THREAD_ID.fetch_add(1, Ordering::SeqCst);
+        let name_prefix = "mio-misc-scheduler";
+        let name = name
+            .map(|n| format!("{}-{}-{}", name_prefix, n, t_id))
+            .unwrap_or_else(|| format!("{}-{}", name_prefix, t_id));
+        let name_clone = name.clone();
+
+        let shut_down = Arc::new(AtomicBool::new(false));
+        let shutdown_clone = Arc::clone(&shut_down);
+        let entry_count = Arc::new(AtomicU32::new(0));
+        let entry_count_clone = Arc::clone(&entry_count);
+        let schedule_queue = Arc::new(SegQueue::new());
+        let schedule_queue_clone = Arc::clone(&schedule_queue);
+        let cancel_queue = Arc::new(SegQueue::new());
+        let cancel_queue_clone = Arc::clone(&cancel_queue);
+        let status = Arc::new(RwLock::new(SchedulerStatus::Active));
+        let status_clone = Arc::clone(&status);
+        let thread_handle = thread::Builder::new()
+            .name(name.clone())
+            .spawn(move || {
+                let mut entries: BTreeSet<ScheduleEntry> = BTreeSet::new();
+                let mut entries_to_cancel: HashSet<ScheduleEntryId> = HashSet::new();
+                while !shut_down.load(Ordering::SeqCst) {
+                    // cancel requests take precedence
+                    while let Ok(entry_id) = cancel_queue.pop() {
+                        trace!(
+                            "{}: cancelling scheduler entry with id {:?};",
+                            name.as_str(),
+                            entry_id
+                        );
+                        let _ = entries_to_cancel.insert(entry_id);
+                    }
+
+                    if let Ok(entry) = schedule_queue.pop() {
+                        trace!("{}: scheduling entry; {:?};", name.as_str(), entry);
+                        if entries.insert(entry) {
+                            entry_count.fetch_add(1, Ordering::SeqCst);
+                        }
+                    }
+                    let entry_opt = entries.iter().next();
+                    if let Some(entry) = entry_opt {
+                        // clone so that we do not get "cannot borrow as mutable more than once at a time" compilation error
+                        let entry_clone = entry.clone();
+                        let now = Instant::now();
+                        // time to execute a callback ?
+                        if now.ge(&entry_clone.start) {
+                            entries.remove(&entry_clone);
+                            // entry still relevant ?
+                            if !entries_to_cancel.contains(&entry_clone.id) {
+                                trace!(
+                                    "{}: executing scheduler entry; {:?}",
+                                    name.as_str(),
+                                    entry_clone
+                                );
+                                let cb = Arc::clone(&entry_clone.callback);
+                                cb();
+                                if let Some(interval) = entry_clone.interval {
+                                    // add back
+                                    let updated_entry = ScheduleEntry {
+                                        start: Instant::now().add(interval),
+                                        interval: entry_clone.interval,
+                                        callback: entry_clone.callback,
+                                        name: entry_clone.name,
+                                        id: entry_clone.id,
+                                    };
+                                    entries.insert(updated_entry);
+                                }
+                            } else {
+                                // not executing and not scheduling a new entry
+                                trace!(
+                                    "{}: cancelling scheduler entry; {:?}",
+                                    name.as_str(),
+                                    entry_clone
+                                );
+
+                                if entries_to_cancel.remove(&entry_clone.id) {
+                                    entry_count.fetch_sub(1, Ordering::SeqCst);
+                                }
+                            }
+                        } else {
+                            // park until the nearest time when we need to execute a function
+                            let timeout_dur = entry_clone.start.sub(now);
+                            trace!("{}: parking scheduler for {:?}", name.as_str(), timeout_dur);
+                            *(status.write().unwrap()) = SchedulerStatus::ParkedTimeout;
+                            thread::park_timeout(timeout_dur);
+                            *(status.write().unwrap()) = SchedulerStatus::Active;
+                        }
                     } else {
-                        delay = delay.sub(elapsed);
+                        // there's no function to execute, so park indefinitely instead of spinning idly
+                        trace!("{}: parking scheduler until being un-parked", name.as_str());
+                        *(status.write().unwrap()) = SchedulerStatus::Parked;
+                        thread::park();
+                        *(status.write().unwrap()) = SchedulerStatus::Active;
                     }
                 }
-            }
-        });
-        SchedulerHandle {
-            cancel,
+            })
+            .unwrap();
+        Scheduler {
+            shutdown: shutdown_clone,
             thread_handle,
+            schedule_queue: schedule_queue_clone,
+            cancel_queue: cancel_queue_clone,
+            name: name_clone,
+            status: status_clone,
+            entry_count: entry_count_clone,
         }
+    }
+}
+
+impl Drop for Scheduler {
+    fn drop(&mut self) {
+        self.shutdown.store(true, Ordering::SeqCst);
+        self.thread_handle.thread().unpark();
     }
 }

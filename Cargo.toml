@@ -1,11 +1,11 @@
 [package]
 name          = "mio-misc"
-version       = "2.0.6"
+version       = "1.0.0"
 license       = "MIT OR Apache-2.0"
 authors       = ["Onur Ozduygu"]
-description   = "Misc components for use with Mio"
+description   = "Miscellaneous components for use with Mio"
 documentation = "https://docs.rs/mio-misc"
-repository    = "https://github.com/dimbleby/mio-extras"
+repository    = "https://github.com/onurzdg/mio-misc"
 readme        = "README.md"
 keywords      = ["io", "async", "non-blocking"]
 categories    = ["asynchronous"]
@@ -14,8 +14,10 @@ edition       = "2018"
 
 [dependencies]
 mio = {version ="0.7", features = ["os-poll", "tcp"]}
+log = "0.4"
 crossbeam = "0.7"
 crossbeam-queue = "0.2"
+rand = "0.7.3"
 
 [[test]]
 name = "test"

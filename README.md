@@ -1,6 +1,6 @@
 # mio-misc
 
-Extra components for use with [Mio](https://github.com/tokio-rs/mio):
+Miscellaneous components for use with [Mio](https://github.com/tokio-rs/mio):
 
 - channels that trigger events on `Poll`
 - schedulers that trigger events on `Poll`

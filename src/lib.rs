@@ -1,30 +1,33 @@
-//! Extra components for use with Mio.
+//! Miscellaneous components for use with Mio.
 #![deny(missing_docs)]
-extern crate mio;
 extern crate crossbeam;
+extern crate mio;
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+#[macro_use]
+extern crate log;
+
+use std::sync::atomic::{AtomicU32, Ordering};
 
 pub mod channel;
-pub mod scheduler;
 pub mod poll;
 pub mod queue;
+pub mod scheduler;
 
-static NOTIFICATION_ID: AtomicUsize = AtomicUsize::new(1);
+static NEXT_NOTIFICATION_ID: AtomicU32 = AtomicU32::new(1);
 
-/// NotificationId
+/// Used while sending notifications
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct NotificationId {id: usize}
+pub struct NotificationId(u32);
 
 impl NotificationId {
-    /// Generates next `NotificationId`, which is guaranteed to be unique
+    /// Generates the next `NotificationId`, which is guaranteed to be unique
     pub fn gen_next() -> NotificationId {
-        let id = NOTIFICATION_ID.fetch_add(1, Ordering::SeqCst);
-        NotificationId{id}
+        let id = NEXT_NOTIFICATION_ID.fetch_add(1, Ordering::SeqCst);
+        NotificationId(id)
     }
 
     /// Returns id
-    pub fn id(&self) -> usize {
-        self.id
+    pub fn id(&self) -> u32 {
+        self.0
     }
 }

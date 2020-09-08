@@ -1,14 +1,17 @@
 use std::thread;
 use std::time::Duration;
 
-use mio::{Events, Poll, Token, Waker, Interest};
+use mio::{Events, Interest, Poll, Token, Waker};
 
-use crate::{TestEvent, expect_events};
-use mio_misc::{channel, poll, NotificationId, queue::NotificationQueue};
+use crate::{expect_events, TestEvent};
+use mio_misc::{channel, poll, queue::NotificationQueue, NotificationId};
 use std::sync::Arc;
 
 use mio::net::{TcpListener, TcpStream};
 use std::net::SocketAddr;
+
+const NO_EVENTS_TEXT: &str = "there should be no events";
+const EVENTS_EXIST_TEXT: &str = "there should be events";
 
 #[test]
 pub fn test_poll() {
@@ -31,13 +34,23 @@ pub fn test_poll() {
     // Create the listener
     let address: SocketAddr = "127.0.0.1:0".parse().unwrap();
     let mut listener = TcpListener::bind(address).unwrap();
-    poll.registry().register(&mut listener, Token(1), Interest::READABLE.add(Interest::WRITABLE))
+    poll.registry()
+        .register(
+            &mut listener,
+            Token(1),
+            Interest::READABLE.add(Interest::WRITABLE),
+        )
         .unwrap();
 
     // Connect a TCP socket to listener
     let mut socket = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
     // Register the socket
-    poll.registry().register(&mut socket, Token(2), Interest::READABLE.add(Interest::WRITABLE))
+    poll.registry()
+        .register(
+            &mut socket,
+            Token(2),
+            Interest::READABLE.add(Interest::WRITABLE),
+        )
         .unwrap();
 
     // Sleep a bit to ensure it arrives at dest
@@ -49,9 +62,18 @@ pub fn test_poll() {
         &mut poll,
         2,
         vec![
-            TestEvent{interest: Interest::READABLE, token: Token(0)},
-            TestEvent{interest: Interest::READABLE, token: Token(1)},
-            TestEvent{interest: Interest::WRITABLE, token: Token(2)},
+            TestEvent {
+                interest: Interest::READABLE,
+                token: Token(0),
+            },
+            TestEvent {
+                interest: Interest::READABLE,
+                token: Token(1),
+            },
+            TestEvent {
+                interest: Interest::WRITABLE,
+                token: Token(2),
+            },
         ],
     );
 }
@@ -65,25 +87,24 @@ pub fn test_poll_channel() {
     let waker = Arc::new(Waker::new(poll.registry(), waker_token).unwrap());
 
     let queue = Arc::new(NotificationQueue::new(waker));
+    let channel_notifier = Arc::clone(&queue);
 
     let channel_1_id = NotificationId::gen_next();
-    let (tx1, rx1) = channel::channel(Arc::clone(&queue), channel_1_id);
+    let (tx1, rx1) = channel::channel(channel_notifier, channel_1_id);
 
+    let channel_notifier = Arc::clone(&queue);
     let channel_2_id = NotificationId::gen_next();
-    let (tx2, rx2) = channel::channel(Arc::clone(&queue), channel_2_id);
+    let (tx2, rx2) = channel::channel(channel_notifier, channel_2_id);
 
-    // Wait, but nothing should happen
-    poll.poll(&mut events, Some(poll_timeout_duration))
-        .unwrap();
-    assert!(events.is_empty());
+    poll.poll(&mut events, Some(poll_timeout_duration)).unwrap();
+    assert!(events.is_empty(), NO_EVENTS_TEXT);
 
     // Push the value
     tx1.send("hello").unwrap();
     tx2.send("world").unwrap();
 
     // Polling will contain the event
-    poll.poll(&mut events, Some(poll_timeout_duration))
-        .unwrap();
+    poll.poll(&mut events, Some(poll_timeout_duration)).unwrap();
 
     let event = events.iter().next().unwrap();
     assert_eq!(event.token(), waker_token);
@@ -92,28 +113,83 @@ pub fn test_poll_channel() {
     assert_eq!(queue.pop().unwrap(), channel_2_id);
 
     // Poll again and there should be no events
-    poll.poll(&mut events, Some(poll_timeout_duration))
-        .unwrap();
-    assert!(events.is_empty());
-    assert!(queue.pop().is_none());
+    poll.poll(&mut events, Some(poll_timeout_duration)).unwrap();
+    assert!(events.is_empty(), NO_EVENTS_TEXT);
+    assert!(queue.pop().is_none(), "there should be no notifications");
 
-    // Read the value
+    // Read the values
     assert_eq!("hello", rx1.try_recv().unwrap());
     assert_eq!("world", rx2.try_recv().unwrap());
 
-    // Poll again, nothing
-    poll.poll(&mut events, Some(poll_timeout_duration))
-        .unwrap();
-    assert!(events.is_empty());
+    poll.poll(&mut events, Some(poll_timeout_duration)).unwrap();
+    assert!(events.is_empty(), NO_EVENTS_TEXT);
 
-    // Push a value
+    // Push values
     tx2.send("meow").unwrap();
     tx1.send("woof").unwrap();
 
-    // Have an event
-    poll.poll(&mut events, Some(poll_timeout_duration))
-        .unwrap();
-    assert!(!events.is_empty());
+    poll.poll(&mut events, Some(poll_timeout_duration)).unwrap();
+    assert!(!events.is_empty(), EVENTS_EXIST_TEXT);
+
+    let event = events.iter().next().unwrap();
+    assert_eq!(event.token(), waker_token);
+    assert!(event.is_readable());
+    assert_eq!(queue.pop().unwrap(), channel_2_id);
+    assert_eq!(queue.pop().unwrap(), channel_1_id);
+}
+
+#[test]
+pub fn test_poll_channel_crossbeam() {
+    let poll_timeout_duration = Duration::from_millis(300);
+    let mut poll = Poll::new().unwrap();
+    let mut events = Events::with_capacity(1024);
+    let waker_token = Token(2);
+    let waker = Arc::new(Waker::new(poll.registry(), waker_token).unwrap());
+
+    let queue = Arc::new(NotificationQueue::new(waker));
+    let channel_notifier = Arc::clone(&queue);
+
+    let channel_1_id = NotificationId::gen_next();
+    let (tx1, rx1) = channel::crossbeam_channel_unbounded(channel_notifier, channel_1_id);
+
+    let channel_notifier = Arc::clone(&queue);
+    let channel_2_id = NotificationId::gen_next();
+    let (tx2, rx2) = channel::crossbeam_channel_unbounded(channel_notifier, channel_2_id);
+
+    poll.poll(&mut events, Some(poll_timeout_duration)).unwrap();
+    assert!(events.is_empty(), NO_EVENTS_TEXT);
+
+    // Push the value
+    tx1.send("hello").unwrap();
+    tx2.send("world").unwrap();
+
+    // Polling will contain the event
+    poll.poll(&mut events, Some(poll_timeout_duration)).unwrap();
+
+    let event = events.iter().next().unwrap();
+    assert_eq!(event.token(), waker_token);
+    assert!(event.is_readable());
+    assert_eq!(queue.pop().unwrap(), channel_1_id);
+    assert_eq!(queue.pop().unwrap(), channel_2_id);
+
+    // Poll again and there should be no events
+    poll.poll(&mut events, Some(poll_timeout_duration)).unwrap();
+    assert!(events.is_empty(), NO_EVENTS_TEXT);
+    assert!(queue.pop().is_none(), "there should be no notifications");
+
+    // Read the values
+    assert_eq!("hello", rx1.try_recv().unwrap());
+    assert_eq!("world", rx2.try_recv().unwrap());
+
+    poll.poll(&mut events, Some(poll_timeout_duration)).unwrap();
+    assert!(events.is_empty(), NO_EVENTS_TEXT);
+
+    // Push values
+    tx2.send("meow").unwrap();
+    tx1.send("woof").unwrap();
+
+    poll.poll(&mut events, Some(poll_timeout_duration)).unwrap();
+    assert!(!events.is_empty(), EVENTS_EXIST_TEXT);
 
     let event = events.iter().next().unwrap();
     assert_eq!(event.token(), waker_token);
@@ -134,8 +210,8 @@ pub fn test_sending_from_other_thread_while_polling() {
     let queue = Arc::new(NotificationQueue::new(waker));
 
     for _ in 0..iterations {
-        let (tx, rx) =
-            channel::channel(Arc::clone(&queue), NotificationId::gen_next());
+        let channel_notifier = Arc::clone(&queue);
+        let (tx, rx) = channel::channel(channel_notifier, NotificationId::gen_next());
 
         for _ in 0..threads {
             let tx = tx.clone();
@@ -159,21 +235,19 @@ pub fn test_sending_from_other_thread_while_polling() {
 #[test]
 pub fn test_dropping_receive_before_poll() {
     let mut poll = poll::Poll::with_capacity(10).unwrap();
-
     let waker = Arc::new(Waker::new(poll.registry(), Token(0)).unwrap());
     let queue = Arc::new(NotificationQueue::new(waker));
+    let channel_notifier = Arc::clone(&queue);
+    let (tx, rx) = channel::channel(channel_notifier, NotificationId::gen_next());
 
-    let (tx, rx) = channel::channel(Arc::clone(&queue), NotificationId::gen_next());
-    // Drop the receive end
     drop(rx);
+    assert!(
+        tx.send("hello").is_err(),
+        "sending should fail after dropping the receiving end"
+    );
 
-    // Push the value
-    assert!(tx.send("hello").is_err());
-
-    // Wait, but nothing should happen
-    let events = poll.wait( Duration::from_millis(300))
-        .unwrap();
-    assert!(events.is_empty());
+    let events = poll.wait(Duration::from_millis(300)).unwrap();
+    assert!(events.is_empty(), NO_EVENTS_TEXT);
 }
 
 #[test]
@@ -185,7 +259,12 @@ pub fn test_mixing_channel_with_socket() {
 
     let address: SocketAddr = "127.0.0.1:0".parse().unwrap();
     let mut listener = TcpListener::bind(address).unwrap();
-    poll.registry().register(&mut listener, Token(1), Interest::READABLE.add(Interest::WRITABLE))
+    poll.registry()
+        .register(
+            &mut listener,
+            Token(1),
+            Interest::READABLE.add(Interest::WRITABLE),
+        )
         .unwrap();
 
     // Push a value onto the channel
@@ -195,7 +274,12 @@ pub fn test_mixing_channel_with_socket() {
     let mut socket = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
 
     // Register the socket
-    poll.registry().register(&mut socket, Token(2), Interest::READABLE.add(Interest::WRITABLE))
+    poll.registry()
+        .register(
+            &mut socket,
+            Token(2),
+            Interest::READABLE.add(Interest::WRITABLE),
+        )
         .unwrap();
 
     // Sleep a bit to ensure it arrives at dest
@@ -205,8 +289,14 @@ pub fn test_mixing_channel_with_socket() {
         &mut poll,
         2,
         vec![
-            TestEvent{interest: Interest::READABLE, token: Token(0)},
-            TestEvent{interest: Interest::READABLE, token: Token(1)},
+            TestEvent {
+                interest: Interest::READABLE,
+                token: Token(0),
+            },
+            TestEvent {
+                interest: Interest::READABLE,
+                token: Token(1),
+            },
         ],
     );
 }
