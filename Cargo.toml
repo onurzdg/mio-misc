@@ -1,15 +1,14 @@
 [package]
 name          = "mio-misc"
 version       = "1.0.0"
-license       = "MIT OR Apache-2.0"
+license       = "MIT"
 authors       = ["Onur Ozduygu"]
 description   = "Miscellaneous components for use with Mio"
 documentation = "https://docs.rs/mio-misc"
 repository    = "https://github.com/onurzdg/mio-misc"
 readme        = "README.md"
-keywords      = ["io", "async", "non-blocking"]
+keywords      = ["io", "async", "non-blocking", "mio"]
 categories    = ["asynchronous"]
-exclude       = [".gitignore"]
 edition       = "2018"
 
 [dependencies]

@@ -9,4 +9,4 @@ Miscellaneous components for use with [Mio](https://github.com/tokio-rs/mio):
 
 # License
 
-`mio-misc` is provided under the MIT license. See LICENSE for details.
+`mio-misc` is provided under the MIT license. See [LICENSE](LICENSE) for details.
