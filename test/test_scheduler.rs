@@ -136,7 +136,7 @@ pub fn test_scheduler_one_time() {
     });
     scheduler.schedule(entry);
     // wait to be able to test with certainty that it won't be executed multiple times
-    thread::sleep(delay.add(Duration::from_millis(40)));
+    thread::sleep(delay.add(Duration::from_millis(70)));
     let called_times = atomic_int.load(Ordering::SeqCst);
     assert_eq!(called_times, 1);
 
@@ -150,7 +150,7 @@ pub fn test_scheduler_one_time() {
     assert_eq!(scheduler.status(), SchedulerStatus::ParkedTimeout);
 
     // wait just enough for the entry to be executed
-    thread::sleep(Duration::from_millis(110));
+    thread::sleep(Duration::from_millis(140));
     let called_times = atomic_int.load(Ordering::SeqCst);
     assert_eq!(called_times, 2);
     assert_eq!(scheduler.status(), SchedulerStatus::Parked);

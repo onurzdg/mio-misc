@@ -5,6 +5,8 @@ Miscellaneous components for use with [Mio](https://github.com/tokio-rs/mio):
 - channels that trigger events on `Poll`
 - schedulers that trigger events on `Poll`
 
+[![Build Status](https://travis-ci.org/onurzdg/mio-misc.svg?branch=master)](https://travis-ci.org/onurzdg/mio-misc)
+
 [Documentation](https://docs.rs/mio-misc).
 
 # License
