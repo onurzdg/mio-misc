@@ -117,7 +117,7 @@ pub fn test_scheduler_with_fixed_interval_cancel() {
     let called_times = atomic_int.load(Ordering::SeqCst);
     assert_eq!(called_times, 0);
 
-    thread::sleep(Duration::from_millis(200));
+    thread::sleep(Duration::from_millis(400));
     assert_eq!(scheduler.status(), SchedulerStatus::Parked);
 }
 
@@ -178,7 +178,7 @@ pub fn test_scheduler_one_time_cancel() {
     scheduler.schedule(entry);
 
     // wait less than the delay assigned to entry so that we prevent the function from being executed
-    thread::sleep(delay.sub(Duration::from_millis(15)));
+    thread::sleep(delay.sub(Duration::from_millis(60)));
     scheduler.cancel(entry_id_1);
     let called_times = atomic_int.load(Ordering::SeqCst);
     assert_eq!(called_times, 0);
@@ -191,13 +191,13 @@ pub fn test_scheduler_one_time_cancel() {
     scheduler.schedule(entry2);
 
     // wait more than the delay assigned to schedule entry so that cancel gets called after entry execution
-    thread::sleep(delay.add(Duration::from_millis(15)));
+    thread::sleep(delay.add(Duration::from_millis(35)));
     scheduler.cancel(entry_id_2);
     let called_times = atomic_int.load(Ordering::SeqCst);
     assert_eq!(called_times, 1);
 
     // verifying that no execution happens after the previous one
-    thread::sleep(delay.add(Duration::from_millis(15)));
+    thread::sleep(delay.add(Duration::from_millis(35)));
     let called_times = atomic_int.load(Ordering::SeqCst);
     assert_eq!(called_times, 1);
     assert_eq!(scheduler.status(), SchedulerStatus::Parked);
