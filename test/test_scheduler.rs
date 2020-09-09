@@ -170,7 +170,7 @@ pub fn test_scheduler_one_time_cancel() {
     let atomic_int = Arc::new(AtomicU32::new(0));
     let atomic_int_clone = Arc::clone(&atomic_int);
     let scheduler = Scheduler::default();
-    let delay = Duration::from_millis(40);
+    let delay = Duration::from_millis(70);
     let entry = ScheduleEntry::one_time(delay, None, move || {
         atomic_int_clone.fetch_add(1, Ordering::SeqCst);
     });
