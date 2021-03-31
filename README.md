@@ -1,10 +1,7 @@
 # mio-misc
 
-Miscellaneous components for use with [Mio](https://github.com/tokio-rs/mio):
-
-- channels that trigger events on `Poll`
-- schedulers that trigger events on `Poll`
-
+Provides channels and schedulers that trigger events on [Mio](https://github.com/tokio-rs/mio) event listener(`Poll`) to 
+build loosely-coupled event-based applications
 
 [![Build Status](https://travis-ci.com/onurzdg/mio-misc.svg?branch=master)](https://travis-ci.com/onurzdg/mio-misc)
 [![crates.io](http://meritbadge.herokuapp.com/mio-misc)](https://crates.io/crates/mio-misc)
