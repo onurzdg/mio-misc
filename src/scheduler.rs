@@ -266,7 +266,7 @@ impl Scheduler {
                 let mut entries_to_cancel: HashSet<ScheduleEntryId> = HashSet::new();
                 while !shut_down.load(Ordering::SeqCst) {
                     // cancel requests take precedence
-                    while let Ok(entry_id) = cancel_queue.pop() {
+                    while let Some(entry_id) = cancel_queue.pop() {
                         trace!(
                             "{}: cancelling scheduler entry with id {:?};",
                             name.as_str(),
@@ -275,7 +275,7 @@ impl Scheduler {
                         let _ = entries_to_cancel.insert(entry_id);
                     }
 
-                    if let Ok(entry) = schedule_queue.pop() {
+                    if let Some(entry) = schedule_queue.pop() {
                         trace!("{}: scheduling entry; {:?};", name.as_str(), entry);
                         if entries.insert(entry) {
                             entry_count.fetch_add(1, Ordering::SeqCst);
