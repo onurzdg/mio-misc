@@ -16,7 +16,9 @@ mio = {version ="0.7", features = ["os-poll", "tcp"]}
 log = "0.4"
 crossbeam = "0.7"
 crossbeam-queue = "0.2"
-rand = "0.7.3"
+
+[dev-dependencies]
+rand = "0.8"
 
 [[test]]
 name = "test"

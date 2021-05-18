@@ -1,6 +1,5 @@
 extern crate mio;
 extern crate mio_misc;
-extern crate rand;
 
 use mio::{Interest, Token};
 use mio_misc::poll::Poll;
