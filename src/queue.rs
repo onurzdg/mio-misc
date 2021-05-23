@@ -51,7 +51,7 @@ impl NotificationQueue {
     /// Attempts to remove an element from the queue
     /// If the queue is empty, None is returned.
     pub fn pop(&self) -> Option<NotificationId> {
-        self.queue.pop().ok()
+        self.queue.pop()
     }
 
     /// Returns `true` if the queue is empty
@@ -107,14 +107,14 @@ impl BoundedNotificationQueue {
     pub fn push(&self, id: NotificationId) -> Result {
         self.queue
             .push(id)
-            .map_err(From::from)
+            .map_err(|id| NotificationError::Full(id))
             .and_then(|_| self.waker.wake().map_err(From::from))
     }
 
     /// Attempts to remove an element from the queue
     /// If the queue is empty, None is returned.
     pub fn pop(&self) -> Option<NotificationId> {
-        self.queue.pop().ok()
+        self.queue.pop()
     }
 
     /// Returns `true` if the queue is empty.
@@ -162,12 +162,6 @@ pub enum NotificationError<T> {
  * ===== Implement Error conversions =====
  *
  */
-
-impl<T> From<crossbeam_queue::PushError<T>> for NotificationError<T> {
-    fn from(src: crossbeam_queue::PushError<T>) -> Self {
-        NotificationError::Full(src.0)
-    }
-}
 
 impl<T> From<io::Error> for NotificationError<T> {
     fn from(src: io::Error) -> Self {

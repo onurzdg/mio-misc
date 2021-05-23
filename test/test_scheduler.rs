@@ -213,7 +213,7 @@ pub fn stress_test_execution() {
     let mut entry_ids = Vec::with_capacity(total_entries);
 
     for idx in 1..=(total_entries as u32) {
-        let interval = Duration::from_millis(rng.gen_range(1, 101));
+        let interval = Duration::from_millis(rng.gen_range(1..101));
         let map_clone = Arc::clone(&map);
         let entry =
             ScheduleEntry::with_interval(interval, None, Some("increment-int".into()), move || {
@@ -293,7 +293,7 @@ pub fn stress_test_execution_with_multiple_threads() {
     let mut thread_handles = Vec::with_capacity(total_entries);
 
     for idx in 1..=(total_entries as u32) {
-        let interval = Duration::from_millis(rng.gen_range(1, 101));
+        let interval = Duration::from_millis(rng.gen_range(1..101));
         let map_clone = Arc::clone(&map);
         let entry =
             ScheduleEntry::with_interval(interval, None, Some("increment-int".into()), move || {
