@@ -18,7 +18,7 @@ pub fn expect_events(poll: &mut Poll, poll_try_count: usize, mut expected: Vec<T
     let poll_timeout = Duration::from_secs(2);
 
     for _ in 0..poll_try_count {
-        let events = poll.wait(poll_timeout).unwrap();
+        let events = poll.poll(poll_timeout).unwrap();
         for event in events.iter() {
             let pos_opt = expected
                 .iter()

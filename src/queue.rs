@@ -107,7 +107,7 @@ impl BoundedNotificationQueue {
     pub fn push(&self, id: NotificationId) -> Result {
         self.queue
             .push(id)
-            .map_err(|id| NotificationError::Full(id))
+            .map_err(NotificationError::Full)
             .and_then(|_| self.waker.wake().map_err(From::from))
     }
 
