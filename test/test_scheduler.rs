@@ -39,7 +39,7 @@ pub fn test_notification_scheduler() {
 
     thread::sleep(Duration::from_millis(33));
 
-    let events = poll.wait(Duration::from_millis(1)).unwrap();
+    let events = poll.poll(Duration::from_millis(1)).unwrap();
     assert!(!events.is_empty());
     assert_eq!(events.iter().next().unwrap().token(), waker_token);
     assert!(queue.len() >= 4);

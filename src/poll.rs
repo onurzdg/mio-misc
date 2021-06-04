@@ -19,8 +19,8 @@ impl Poll {
         })
     }
 
-    /// Polls until the provided duration and returns `Events`
-    pub fn wait<I>(&mut self, timeout: I) -> io::Result<&mio::Events>
+    /// Polls until the optionally provided duration and returns `Events`
+    pub fn poll<I>(&mut self, timeout: I) -> io::Result<&mio::Events>
     where
         I: Into<Option<Duration>>,
     {
@@ -28,6 +28,15 @@ impl Poll {
         Ok(&self.events)
     }
 
+    /// Clears polled events
+    pub fn clear(&mut self) {
+        self.events.clear()
+    }
+
+    /// Gives access to polled events
+    pub fn polled_events(&self) -> &mio::Events {
+        &self.events
+    }
     /// Returns registry
     pub fn registry(&self) -> &Registry {
         self.poll.registry()

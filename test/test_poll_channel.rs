@@ -17,7 +17,7 @@ const EVENTS_EXIST_TEXT: &str = "there should be events";
 pub fn test_poll() {
     let mut poll = poll::Poll::with_capacity(100).unwrap();
 
-    let events = poll.wait(Duration::from_millis(200)).unwrap();
+    let events = poll.poll(Duration::from_millis(200)).unwrap();
 
     assert!(events.is_empty());
 
@@ -25,7 +25,7 @@ pub fn test_poll() {
 
     let _ = waker.wake();
 
-    let events = poll.wait(Duration::from_millis(200)).unwrap();
+    let events = poll.poll(Duration::from_millis(200)).unwrap();
 
     assert!(!events.is_empty());
     let event = events.iter().next().unwrap();
@@ -223,7 +223,7 @@ pub fn test_sending_from_other_thread_while_polling() {
 
         let mut recv = 0;
         while recv < threads {
-            let events = poll.wait(Duration::from_secs(2)).unwrap();
+            let events = poll.poll(Duration::from_secs(2)).unwrap();
             assert_eq!(events.iter().next().unwrap().token(), Token(0));
             while let Ok(_) = rx.try_recv() {
                 recv += 1;
@@ -246,7 +246,7 @@ pub fn test_dropping_receive_before_poll() {
         "sending should fail after dropping the receiving end"
     );
 
-    let events = poll.wait(Duration::from_millis(300)).unwrap();
+    let events = poll.poll(Duration::from_millis(300)).unwrap();
     assert!(events.is_empty(), NO_EVENTS_TEXT);
 }
 
