@@ -16,6 +16,7 @@ use std::{
 };
 
 /// Schedules notification deliveries
+#[derive(Debug)]
 pub struct NotificationScheduler {
     notifier: Arc<dyn Notifier>,
     scheduler: Arc<Scheduler>,
@@ -193,6 +194,7 @@ pub enum SchedulerStatus {
 }
 
 /// Single-threaded scheduler that prioritizes "cancels" over schedule executions, hence multiple queues
+#[derive(Debug)]
 pub struct Scheduler {
     shutdown: Arc<AtomicBool>,
     thread_handle: JoinHandle<()>,
@@ -269,72 +271,60 @@ impl Scheduler {
                     while let Some(entry_id) = cancel_queue.pop() {
                         trace!(
                             "{}: cancelling scheduler entry with id {:?};",
-                            name.as_str(),
+                            name,
                             entry_id
                         );
                         let _ = entries_to_cancel.insert(entry_id);
                     }
-
                     if let Some(entry) = schedule_queue.pop() {
-                        trace!("{}: scheduling entry; {:?};", name.as_str(), entry);
+                        trace!("{}: scheduling entry; {:?};", name, entry);
                         if entries.insert(entry) {
                             entry_count.fetch_add(1, Ordering::SeqCst);
                         }
                     }
-                    let entry_opt = entries.iter().next();
-                    if let Some(entry) = entry_opt {
-                        // clone so that we do not get "cannot borrow as mutable more than once at a time" compilation error
-                        let entry_clone = entry.clone();
+                    if let Some(entry) = entries.iter().cloned().next() {
                         let now = Instant::now();
                         // time to execute a callback ?
-                        if now.ge(&entry_clone.start) {
-                            entries.remove(&entry_clone);
+                        if now.ge(&entry.start) {
+                            entries.remove(&entry);
                             // entry still relevant ?
-                            if !entries_to_cancel.contains(&entry_clone.id) {
-                                trace!(
-                                    "{}: executing scheduler entry; {:?}",
-                                    name.as_str(),
-                                    entry_clone
-                                );
-                                let cb = Arc::clone(&entry_clone.callback);
+                            if !entries_to_cancel.contains(&entry.id) {
+                                trace!("{}: executing scheduler entry; {:?}", name, entry);
+                                let cb = Arc::clone(&entry.callback);
                                 cb();
-                                if let Some(interval) = entry_clone.interval {
+                                if let Some(interval) = entry.interval {
                                     // add back
                                     let updated_entry = ScheduleEntry {
                                         start: Instant::now().add(interval),
-                                        interval: entry_clone.interval,
-                                        callback: entry_clone.callback,
-                                        name: entry_clone.name,
-                                        id: entry_clone.id,
+                                        interval: entry.interval,
+                                        callback: entry.callback,
+                                        name: entry.name,
+                                        id: entry.id,
                                     };
                                     entries.insert(updated_entry);
                                 }
                             } else {
                                 // not executing and not scheduling a new entry
-                                trace!(
-                                    "{}: cancelling scheduler entry; {:?}",
-                                    name.as_str(),
-                                    entry_clone
-                                );
+                                trace!("{}: cancelling scheduler entry; {:?}", name, entry);
 
-                                if entries_to_cancel.remove(&entry_clone.id) {
+                                if entries_to_cancel.remove(&entry.id) {
                                     entry_count.fetch_sub(1, Ordering::SeqCst);
                                 }
                             }
                         } else {
                             // park until the nearest time when we need to execute a function
-                            let timeout_dur = entry_clone.start.sub(now);
-                            trace!("{}: parking scheduler for {:?}", name.as_str(), timeout_dur);
-                            *(status.write().unwrap()) = SchedulerStatus::ParkedTimeout;
+                            let timeout_dur = entry.start.sub(now);
+                            trace!("{}: parking scheduler for {:?}", name, timeout_dur);
+                            *status.write().unwrap() = SchedulerStatus::ParkedTimeout;
                             thread::park_timeout(timeout_dur);
-                            *(status.write().unwrap()) = SchedulerStatus::Active;
+                            *status.write().unwrap() = SchedulerStatus::Active;
                         }
                     } else {
                         // there's no function to execute, so park indefinitely instead of spinning idly
-                        trace!("{}: parking scheduler until being un-parked", name.as_str());
-                        *(status.write().unwrap()) = SchedulerStatus::Parked;
+                        trace!("{}: parking scheduler until being un-parked", name);
+                        *status.write().unwrap() = SchedulerStatus::Parked;
                         thread::park();
-                        *(status.write().unwrap()) = SchedulerStatus::Active;
+                        *status.write().unwrap() = SchedulerStatus::Active;
                     }
                 }
             })

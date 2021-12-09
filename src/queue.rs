@@ -9,7 +9,7 @@ use std::{error, fmt, io};
 pub type Result = std::result::Result<(), NotificationError<NotificationId>>;
 
 /// Represents the side that notifies
-pub trait Notifier: Send + Sync {
+pub trait Notifier: Send + Sync + fmt::Debug {
     /// Notifies `Poll`
     fn notify(&self, id: NotificationId) -> Result;
 }
@@ -26,6 +26,7 @@ pub trait NotificationReceiver: Send + Sync {
 
 /// An unbounded queue that helps with simulation of registering event sources with `Poll`.
 /// It keeps track of `NotificationId`s associated with `Waker`
+#[derive(Debug)]
 pub struct NotificationQueue {
     /// Waker to notify Poll
     waker: Arc<Waker>,
@@ -87,6 +88,7 @@ impl NotificationReceiver for NotificationQueue {
 
 /// A bounded queue that helps with simulation of registering event sources with `Poll`.
 /// It keeps track of `NotificationId`s associated with Waker
+#[derive(Debug)]
 pub struct BoundedNotificationQueue {
     /// Waker to notify Poll
     waker: Arc<Waker>,
@@ -179,23 +181,18 @@ impl<T> error::Error for NotificationError<T> {}
 
 impl<T> fmt::Debug for NotificationError<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        format_sync_notification_error(self, f)
+        match self {
+            NotificationError::Io(io_err) => write!(f, "{:?}", io_err),
+            NotificationError::Full(..) => write!(f, "Full(..)"),
+        }
     }
 }
 
 impl<T> fmt::Display for NotificationError<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        format_sync_notification_error(self, f)
-    }
-}
-
-#[inline]
-fn format_sync_notification_error<T>(
-    e: &NotificationError<T>,
-    f: &mut fmt::Formatter,
-) -> fmt::Result {
-    match e {
-        NotificationError::Io(ref io_err) => write!(f, "{}", io_err),
-        NotificationError::Full(..) => write!(f, "Full"),
+        match self {
+            NotificationError::Io(io_err) => write!(f, "{}", io_err),
+            NotificationError::Full(..) => write!(f, "sending on a full notification queue"),
+        }
     }
 }

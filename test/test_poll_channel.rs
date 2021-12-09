@@ -97,7 +97,7 @@ pub fn test_poll_channel() {
     let (tx2, rx2) = channel::channel(channel_notifier, channel_2_id);
 
     poll.poll(&mut events, Some(poll_timeout_duration)).unwrap();
-    assert!(events.is_empty(), NO_EVENTS_TEXT);
+    assert!(events.is_empty(), "{}", NO_EVENTS_TEXT);
 
     // Push the value
     tx1.send("hello").unwrap();
@@ -114,7 +114,7 @@ pub fn test_poll_channel() {
 
     // Poll again and there should be no events
     poll.poll(&mut events, Some(poll_timeout_duration)).unwrap();
-    assert!(events.is_empty(), NO_EVENTS_TEXT);
+    assert!(events.is_empty(), "{}", NO_EVENTS_TEXT);
     assert!(queue.pop().is_none(), "there should be no notifications");
 
     // Read the values
@@ -122,14 +122,14 @@ pub fn test_poll_channel() {
     assert_eq!("world", rx2.try_recv().unwrap());
 
     poll.poll(&mut events, Some(poll_timeout_duration)).unwrap();
-    assert!(events.is_empty(), NO_EVENTS_TEXT);
+    assert!(events.is_empty(), "{}", NO_EVENTS_TEXT);
 
     // Push values
     tx2.send("meow").unwrap();
     tx1.send("woof").unwrap();
 
     poll.poll(&mut events, Some(poll_timeout_duration)).unwrap();
-    assert!(!events.is_empty(), EVENTS_EXIST_TEXT);
+    assert!(!events.is_empty(), "{}", EVENTS_EXIST_TEXT);
 
     let event = events.iter().next().unwrap();
     assert_eq!(event.token(), waker_token);
@@ -157,7 +157,7 @@ pub fn test_poll_channel_crossbeam() {
     let (tx2, rx2) = channel::crossbeam_channel_unbounded(channel_notifier, channel_2_id);
 
     poll.poll(&mut events, Some(poll_timeout_duration)).unwrap();
-    assert!(events.is_empty(), NO_EVENTS_TEXT);
+    assert!(events.is_empty(), "{}", NO_EVENTS_TEXT);
 
     // Push the value
     tx1.send("hello").unwrap();
@@ -174,7 +174,7 @@ pub fn test_poll_channel_crossbeam() {
 
     // Poll again and there should be no events
     poll.poll(&mut events, Some(poll_timeout_duration)).unwrap();
-    assert!(events.is_empty(), NO_EVENTS_TEXT);
+    assert!(events.is_empty(), "{}", NO_EVENTS_TEXT);
     assert!(queue.pop().is_none(), "there should be no notifications");
 
     // Read the values
@@ -182,14 +182,14 @@ pub fn test_poll_channel_crossbeam() {
     assert_eq!("world", rx2.try_recv().unwrap());
 
     poll.poll(&mut events, Some(poll_timeout_duration)).unwrap();
-    assert!(events.is_empty(), NO_EVENTS_TEXT);
+    assert!(events.is_empty(), "{}", NO_EVENTS_TEXT);
 
     // Push values
     tx2.send("meow").unwrap();
     tx1.send("woof").unwrap();
 
     poll.poll(&mut events, Some(poll_timeout_duration)).unwrap();
-    assert!(!events.is_empty(), EVENTS_EXIST_TEXT);
+    assert!(!events.is_empty(), "{}", EVENTS_EXIST_TEXT);
 
     let event = events.iter().next().unwrap();
     assert_eq!(event.token(), waker_token);
@@ -247,7 +247,7 @@ pub fn test_dropping_receive_before_poll() {
     );
 
     let events = poll.poll(Duration::from_millis(300)).unwrap();
-    assert!(events.is_empty(), NO_EVENTS_TEXT);
+    assert!(events.is_empty(), "{}", NO_EVENTS_TEXT);
 }
 
 #[test]
