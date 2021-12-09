@@ -250,43 +250,44 @@ impl<T> error::Error for TrySendError<T> {}
 
 impl<T> fmt::Debug for SendError<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        format_send_error(self, f)
+        match self {
+            SendError::Io(io_err) => write!(f, "{:?}", io_err),
+            SendError::Disconnected(_) => write!(f, "Disconnected(..)"),
+            SendError::NotificationQueueFull => write!(f, "NotificationQueueFull"),
+        }
     }
 }
 
 impl<T> fmt::Display for SendError<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        format_send_error(self, f)
+        match self {
+            SendError::Io(io_err) => write!(f, "{}", io_err),
+            SendError::Disconnected(_) => write!(f, "sending on a closed channel"),
+            SendError::NotificationQueueFull => write!(f, "sending on a full notification queue"),
+        }
     }
 }
 
 impl<T> fmt::Debug for TrySendError<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        format_try_send_error(self, f)
+        match self {
+            TrySendError::Io(io_err) => write!(f, "{:?}", io_err),
+            TrySendError::Full(..) => write!(f, "Full(..)"),
+            TrySendError::Disconnected(..) => write!(f, "Disconnected(..)"),
+            TrySendError::NotificationQueueFull => write!(f, "NotificationQueueFull"),
+        }
     }
 }
 
 impl<T> fmt::Display for TrySendError<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        format_try_send_error(self, f)
-    }
-}
-
-#[inline]
-fn format_send_error<T>(e: &SendError<T>, f: &mut fmt::Formatter) -> fmt::Result {
-    match e {
-        SendError::Io(ref io_err) => write!(f, "{}", io_err),
-        SendError::Disconnected(_) => write!(f, "Disconnected"),
-        SendError::NotificationQueueFull => write!(f, "Notification queue full"),
-    }
-}
-
-#[inline]
-fn format_try_send_error<T>(e: &TrySendError<T>, f: &mut fmt::Formatter) -> fmt::Result {
-    match e {
-        TrySendError::Io(ref io_err) => write!(f, "{}", io_err),
-        TrySendError::Full(..) => write!(f, "Channel full"),
-        TrySendError::Disconnected(..) => write!(f, "Disconnected"),
-        TrySendError::NotificationQueueFull => write!(f, "Notification queue full"),
+        match self {
+            TrySendError::Io(io_err) => write!(f, "{}", io_err),
+            TrySendError::Full(..) => write!(f, "sending on a full channel"),
+            TrySendError::Disconnected(..) => write!(f, "sending on a closed channel"),
+            TrySendError::NotificationQueueFull => {
+                write!(f, "sending on a full notification queue")
+            }
+        }
     }
 }

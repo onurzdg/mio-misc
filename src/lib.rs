@@ -6,6 +6,7 @@ extern crate mio;
 #[macro_use]
 extern crate log;
 
+use std::fmt;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 pub mod channel;
@@ -29,5 +30,11 @@ impl NotificationId {
     /// Returns id
     pub fn id(&self) -> u32 {
         self.0
+    }
+}
+
+impl fmt::Display for NotificationId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }

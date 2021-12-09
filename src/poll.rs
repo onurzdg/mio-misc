@@ -4,6 +4,7 @@ use std::io;
 use std::time::Duration;
 
 /// Encapsulates `mio::Poll` and `mio::Events`
+#[derive(Debug)]
 pub struct Poll {
     poll: mio::Poll,
     events: mio::Events,
