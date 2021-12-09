@@ -3,7 +3,7 @@
 Provides channels and schedulers that trigger events on [Mio](https://github.com/tokio-rs/mio) event listener(`Poll`) to 
 build loosely-coupled event-based applications
 
-[![Build Status](https://travis-ci.com/onurzdg/mio-misc.svg?branch=master)](https://travis-ci.com/onurzdg/mio-misc)
+![Build Status](https://github.com/onurzdg/mio-misc/actions/workflows/rust.yml/badge.svg)
 [![crates.io](https://img.shields.io/crates/v/mio-misc.svg)](https://crates.io/crates/mio-misc)
 [![Released API docs](https://docs.rs/mio-misc/badge.svg)](https://docs.rs/mio-misc)
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
