@@ -4,9 +4,9 @@ Provides channels and schedulers that trigger events on [Mio](https://github.com
 build loosely-coupled event-based applications
 
 [![Build Status](https://travis-ci.com/onurzdg/mio-misc.svg?branch=master)](https://travis-ci.com/onurzdg/mio-misc)
-[![crates.io](http://meritbadge.herokuapp.com/mio-misc)](https://crates.io/crates/mio-misc)
-
-[Documentation](https://docs.rs/mio-misc).
+[![crates.io](https://img.shields.io/crates/v/mio-misc.svg)](https://crates.io/crates/mio-misc)
+[![Released API docs](https://docs.rs/mio-misc/badge.svg)](https://docs.rs/mio-misc)
+[![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
 # License
 
