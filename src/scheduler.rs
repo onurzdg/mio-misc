@@ -289,11 +289,7 @@ impl Scheduler {
                             entries.remove(&entry);
                             // entry still relevant ?
                             if !entries_to_cancel.contains(&entry.id) {
-                                trace!(
-                                    "{}: executing scheduler entry; {:?}",
-                                    name,
-                                    entry
-                                );
+                                trace!("{}: executing scheduler entry; {:?}", name, entry);
                                 let cb = Arc::clone(&entry.callback);
                                 cb();
                                 if let Some(interval) = entry.interval {
@@ -309,11 +305,7 @@ impl Scheduler {
                                 }
                             } else {
                                 // not executing and not scheduling a new entry
-                                trace!(
-                                    "{}: cancelling scheduler entry; {:?}",
-                                    name,
-                                    entry
-                                );
+                                trace!("{}: cancelling scheduler entry; {:?}", name, entry);
 
                                 if entries_to_cancel.remove(&entry.id) {
                                     entry_count.fetch_sub(1, Ordering::SeqCst);
