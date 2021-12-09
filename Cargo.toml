@@ -1,6 +1,6 @@
 [package]
 name          = "mio-misc"
-version       = "1.3.2"
+version       = "2.0.0"
 license       = "MIT"
 authors       = ["Onur Ozduygu"]
 description   = "Miscellaneous components for use with Mio"
