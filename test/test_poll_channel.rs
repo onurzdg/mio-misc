@@ -225,7 +225,7 @@ pub fn test_sending_from_other_thread_while_polling() {
         while recv < threads {
             let events = poll.poll(Duration::from_secs(2)).unwrap();
             assert_eq!(events.iter().next().unwrap().token(), Token(0));
-            while let Ok(_) = rx.try_recv() {
+            while rx.try_recv().is_ok() {
                 recv += 1;
             }
         }
