@@ -1,6 +1,6 @@
 [package]
 name          = "mio-misc"
-version       = "2.0.0"
+version       = "2.1.0"
 license       = "MIT"
 authors       = ["Onur Ozduygu"]
 description   = "Miscellaneous components for use with Mio"
@@ -9,16 +9,16 @@ repository    = "https://github.com/onurzdg/mio-misc"
 readme        = "README.md"
 keywords      = ["io", "async", "non-blocking", "mio"]
 categories    = ["asynchronous"]
-edition       = "2018"
+edition       = "2021"
 
 [dependencies]
-mio = {version ="0.8", features = ["os-poll", "net"]}
+mio = { version ="1.0.4", features = ["os-poll", "net"] }
 log = "0.4"
 crossbeam = "0.8"
 crossbeam-queue = "0.3"
 
 [dev-dependencies]
-rand = "0.8"
+rand = "0.9"
 
 [[test]]
 name = "test"
