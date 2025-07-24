@@ -206,14 +206,14 @@ pub fn test_scheduler_one_time_cancel() {
 #[test]
 pub fn stress_test_execution() {
     let scheduler = Scheduler::default();
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     let map: Arc<RwLock<HashMap<u32, Mutex<u32>>>> = Arc::new(RwLock::new(HashMap::new()));
     let total_entries = 50;
     let mut entry_ids = Vec::with_capacity(total_entries);
 
     for idx in 1..=(total_entries as u32) {
-        let interval = Duration::from_millis(rng.gen_range(1..101));
+        let interval = Duration::from_millis(rng.random_range(1..101));
         let map_clone = Arc::clone(&map);
         let entry =
             ScheduleEntry::with_interval(interval, None, Some("increment-int".into()), move || {
@@ -284,7 +284,7 @@ pub fn stress_test_execution() {
 #[test]
 pub fn stress_test_execution_with_multiple_threads() {
     let scheduler = Arc::new(Scheduler::default());
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let barrier = Arc::new(Barrier::new(10));
 
     let map: Arc<RwLock<HashMap<u32, Mutex<u32>>>> = Arc::new(RwLock::new(HashMap::new()));
@@ -293,7 +293,7 @@ pub fn stress_test_execution_with_multiple_threads() {
     let mut thread_handles = Vec::with_capacity(total_entries);
 
     for idx in 1..=(total_entries as u32) {
-        let interval = Duration::from_millis(rng.gen_range(1..101));
+        let interval = Duration::from_millis(rng.random_range(1..101));
         let map_clone = Arc::clone(&map);
         let entry =
             ScheduleEntry::with_interval(interval, None, Some("increment-int".into()), move || {
