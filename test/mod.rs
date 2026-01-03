@@ -1,6 +1,3 @@
-extern crate mio;
-extern crate mio_misc;
-
 use mio::{Interest, Token};
 use mio_misc::poll::Poll;
 use std::time::Duration;

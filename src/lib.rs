@@ -1,7 +1,5 @@
 //! Miscellaneous components for use with Mio.
 #![deny(missing_docs)]
-extern crate crossbeam;
-extern crate mio;
 
 #[macro_use]
 extern crate log;
