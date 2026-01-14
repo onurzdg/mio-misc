@@ -5,7 +5,7 @@ use mio::Waker;
 use std::sync::Arc;
 use std::{error, fmt, io};
 
-///
+/// Result type for the queue
 pub type Result = std::result::Result<(), NotificationError<NotificationId>>;
 
 /// Represents the side that notifies
@@ -16,7 +16,7 @@ pub trait Notifier: Send + Sync + fmt::Debug {
 
 /// Represents the side that receives event notifications
 pub trait NotificationReceiver: Send + Sync {
-    /// Retrieves the next notification, if there's any
+    /// Retrieves the next notification if there's any
     fn receive(&self) -> Option<NotificationId>;
     /// Returns number of notifications
     fn len(&self) -> usize;
@@ -25,7 +25,7 @@ pub trait NotificationReceiver: Send + Sync {
 }
 
 /// An unbounded queue that helps with simulation of registering event sources with `Poll`.
-/// It keeps track of `NotificationId`s associated with `Waker`
+/// It keeps track of `NotificationId's associated with `Waker`
 #[derive(Debug)]
 pub struct NotificationQueue {
     /// Waker to notify Poll
@@ -87,7 +87,7 @@ impl NotificationReceiver for NotificationQueue {
 }
 
 /// A bounded queue that helps with simulation of registering event sources with `Poll`.
-/// It keeps track of `NotificationId`s associated with Waker
+/// It keeps track of `NotificationId's associated with Waker
 #[derive(Debug)]
 pub struct BoundedNotificationQueue {
     /// Waker to notify Poll

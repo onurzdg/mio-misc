@@ -25,7 +25,7 @@ impl Poll {
     where
         I: Into<Option<Duration>>,
     {
-        let _ = self.poll.poll(&mut self.events, timeout.into())?;
+        self.poll.poll(&mut self.events, timeout.into())?;
         Ok(&self.events)
     }
 
