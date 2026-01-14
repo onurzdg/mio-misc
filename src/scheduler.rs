@@ -38,10 +38,7 @@ impl NotificationScheduler {
         interval: Duration,
         initial_delay: I,
         name: Option<String>,
-    ) -> ScheduleEntryId
-    where
-        I: Into<Option<Duration>>,
-    {
+    ) -> ScheduleEntryId {
         let notifier = Arc::clone(&self.notifier);
         let entry = ScheduleEntry::with_interval(interval, initial_delay, name, move || {
             let _ = notifier.notify(id);
@@ -282,9 +279,9 @@ impl Scheduler {
                             entry_count.fetch_add(1, Ordering::SeqCst);
                         }
                     }
-                    if let Some(entry) = entries.iter().cloned().next() {
+                    if let Some(entry) = entries.iter().next().cloned() {
                         let now = Instant::now();
-                        // time to execute a callback ?
+                        // time to execute a callback?
                         if now.ge(&entry.start) {
                             entries.remove(&entry);
                             // entry still relevant ?

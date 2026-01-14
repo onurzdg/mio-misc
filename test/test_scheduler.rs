@@ -111,7 +111,7 @@ pub fn test_scheduler_with_fixed_interval_cancel() {
     // wait for the entry to be scheduled
     thread::sleep(Duration::from_millis(50));
     scheduler.cancel(entry_id_2);
-    let possible_states = vec![SchedulerStatus::ParkedTimeout, SchedulerStatus::Active];
+    let possible_states = [SchedulerStatus::ParkedTimeout, SchedulerStatus::Active];
     assert!(possible_states.contains(&scheduler.status()));
 
     let called_times = atomic_int.load(Ordering::SeqCst);
@@ -128,7 +128,7 @@ pub fn test_scheduler_one_time() {
 
     let delay = Duration::from_millis(20);
     let scheduler = Scheduler::default();
-    let possible_states = vec![SchedulerStatus::Parked, SchedulerStatus::Active];
+    let possible_states = [SchedulerStatus::Parked, SchedulerStatus::Active];
     assert!(possible_states.contains(&scheduler.status()));
 
     let entry = ScheduleEntry::one_time(delay, None, move || {
@@ -241,7 +241,7 @@ pub fn stress_test_execution() {
     );
     assert_eq!(
         entry_ids.len(),
-        total_entries as usize,
+        { total_entries },
         "entry id count should match after initial scheduling of entries"
     );
     assert!(
@@ -329,7 +329,7 @@ pub fn stress_test_execution_with_multiple_threads() {
     );
     assert_eq!(
         entry_ids.len(),
-        total_entries as usize,
+        { total_entries },
         "entry id count should match after initial scheduling of entries"
     );
     assert!(
