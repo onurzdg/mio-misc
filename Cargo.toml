@@ -2,7 +2,7 @@
 name          = "mio-misc"
 version       = "2.1.0"
 license       = "MIT"
-authors       = ["Onur Ozduygu"]
+authors       = ["onur"]
 description   = "Miscellaneous components for use with Mio"
 documentation = "https://docs.rs/mio-misc"
 repository    = "https://github.com/onurzdg/mio-misc"
